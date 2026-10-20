@@ -5,6 +5,7 @@ from io import StringIO
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -354,3 +355,40 @@ class BooksFlowTests(TestCase):
         output = StringIO()
         call_command("generate_recurring", stdout=output)
         self.assertIn("Posted 1", output.getvalue())
+
+    def test_post_journal_command_writes_a_balanced_entry(self):
+        output = StringIO()
+        call_command(
+            "post_journal",
+            "--email",
+            "ada@example.com",
+            "--date",
+            "2026-08-01",
+            "--memo",
+            "CLI supplies",
+            "--line",
+            "5100:8.00:0",
+            "--line",
+            "1000:0:8.00",
+            stdout=output,
+        )
+        self.assertIn("Posted journal", output.getvalue())
+        from apps.ledger.models import JournalEntry
+
+        entry = JournalEntry.objects.get(memo="CLI supplies", organization=self.user.organization)
+        self.assertEqual(entry.source_type, "cli")
+        self.assertEqual(entry.lines.count(), 2)
+        with self.assertRaises(CommandError):
+            call_command(
+                "post_journal",
+                "--email",
+                "ada@example.com",
+                "--date",
+                "2026-08-02",
+                "--memo",
+                "CLI broken",
+                "--line",
+                "5100:8.00:0",
+                "--line",
+                "1000:0:1.00",
+            )
