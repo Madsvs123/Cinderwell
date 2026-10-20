@@ -1,8 +1,10 @@
+from datetime import datetime
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
 
 from apps.ledger.models import Account, JournalEntry, JournalLine
 
@@ -63,6 +65,49 @@ def create_posted_entry(organization, entry_date, memo, lines, source_type="", s
         ]
     )
     return entry
+
+
+def parse_optional_date(value):
+    if not value:
+        return None
+    if hasattr(value, "year") and hasattr(value, "month"):
+        return value
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValidationError("Use a YYYY-MM-DD date.") from exc
+
+
+@transaction.atomic
+def reverse_entry(entry, reversal_date=None, memo=""):
+    if entry.status != JournalEntry.Status.POSTED:
+        raise ValidationError("Only a posted journal can be reversed.")
+    if JournalEntry.objects.filter(
+        organization=entry.organization,
+        source_type="reversal",
+        source_id=str(entry.id),
+        status=JournalEntry.Status.POSTED,
+    ).exists():
+        raise ValidationError("This journal has already been reversed.")
+    lines = [
+        {
+            "account": line.account,
+            "description": line.description,
+            "debit": line.credit,
+            "credit": line.debit,
+        }
+        for line in entry.lines.select_related("account")
+    ]
+    when = reversal_date or timezone.localdate()
+    text = memo or f"Reversal of journal {entry.id}"
+    return create_posted_entry(
+        entry.organization,
+        when,
+        text,
+        lines,
+        source_type="reversal",
+        source_id=str(entry.id),
+    )
 
 
 def account_totals(organization, start=None, end=None):

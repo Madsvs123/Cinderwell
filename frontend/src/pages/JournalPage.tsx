@@ -7,14 +7,22 @@ export function JournalPage() {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: async () => (await api.get<{ results: Account[] }>("/accounts/")).data.results });
   const journals = useQuery({ queryKey: ["journals"], queryFn: async () => (await api.get<{ results: Journal[] }>("/journals/")).data.results });
+  const refreshBooks = () => {
+    queryClient.invalidateQueries({ queryKey: ["journals"] });
+    queryClient.invalidateQueries({ queryKey: ["profit"] });
+    queryClient.invalidateQueries({ queryKey: ["sheet"] });
+  };
   const post = useMutation({
     mutationFn: async (body: unknown) => api.post("/journals/", body),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["journals"] });
-      queryClient.invalidateQueries({ queryKey: ["profit"] });
-      queryClient.invalidateQueries({ queryKey: ["sheet"] });
-    },
+    onSuccess: refreshBooks,
   });
+  const reverse = useMutation({
+    mutationFn: async (id: number) => api.post(`/journals/${id}/reverse/`),
+    onSuccess: refreshBooks,
+  });
+  const reversedIds = new Set(
+    (journals.data ?? []).filter((entry) => entry.source_type === "reversal").map((entry) => entry.source_id),
+  );
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +52,7 @@ export function JournalPage() {
       </form>
       <div className="card">
         <table>
-          <thead><tr><th>Date</th><th>Memo</th><th>Lines</th><th className="num">Amount</th></tr></thead>
+          <thead><tr><th>Date</th><th>Memo</th><th>Lines</th><th className="num">Amount</th><th></th></tr></thead>
           <tbody>
             {(journals.data ?? []).map((entry) => (
               <tr key={entry.id}>
@@ -52,6 +60,11 @@ export function JournalPage() {
                 <td>{entry.memo || entry.source_type || "Manual"}</td>
                 <td>{entry.lines.map((line) => line.account_code).join(", ")}</td>
                 <td className="num">{money(entry.lines.reduce((sum, line) => sum + Number(line.debit), 0))}</td>
+                <td>
+                  {entry.status === "posted" && !reversedIds.has(String(entry.id)) && (
+                    <button className="btn quiet" type="button" onClick={() => reverse.mutate(entry.id)}>Reverse</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

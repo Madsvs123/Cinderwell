@@ -11,7 +11,7 @@ api.interceptors.request.use((config) => {
 
 export type Account = { id: number; code: string; name: string; type: string; is_active: boolean };
 export type JournalLine = { id: number; account: number; account_code: string; account_name: string; description: string; debit: string; credit: string };
-export type Journal = { id: number; entry_date: string; memo: string; status: string; source_type: string; lines: JournalLine[] };
+export type Journal = { id: number; entry_date: string; memo: string; status: string; source_type: string; source_id: string; lines: JournalLine[] };
 export type Invoice = {
   id: number; number: string; customer_name: string; issue_date: string; due_date: string;
   status: string; tax_rate: string; subtotal: string; tax: string; total: string;

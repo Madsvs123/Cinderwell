@@ -1,11 +1,12 @@
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.ledger.models import Account, JournalEntry
 from apps.ledger.serializers import AccountSerializer, JournalEntrySerializer, JournalEntryWriteSerializer
-from apps.ledger.services import create_posted_entry
+from apps.ledger.services import create_posted_entry, parse_optional_date, reverse_entry
 
 
 def organization_of(request):
@@ -43,3 +44,13 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(JournalEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def reverse(self, request, pk=None):
+        entry = self.get_object()
+        try:
+            reversal_date = parse_optional_date(request.data.get("reversal_date"))
+            reversed_entry = reverse_entry(entry, reversal_date, request.data.get("memo") or "")
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(JournalEntrySerializer(reversed_entry).data, status=status.HTTP_201_CREATED)

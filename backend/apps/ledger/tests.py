@@ -94,3 +94,34 @@ class BooksFlowTests(TestCase):
         self.assertEqual(report.data["lines"][0]["budget"], "500.00")
         self.assertEqual(date(2026, 3, 1).year, 2026)
         self.assertIsInstance(Decimal("500.00"), Decimal)
+
+    def test_reversal_posts_the_opposite_entry(self):
+        expense = Account.objects.get(organization=self.user.organization, code="5100")
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        created = self.client.post(
+            "/api/journals/",
+            {
+                "entry_date": "2026-04-01",
+                "memo": "Supplies",
+                "lines": [
+                    {"account": expense.id, "debit": "40.00", "credit": "0"},
+                    {"account": cash.id, "debit": "0", "credit": "40.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        reversed_entry = self.client.post(
+            f"/api/journals/{created.data['id']}/reverse/",
+            {"reversal_date": "2026-04-02", "memo": "Undo supplies"},
+            format="json",
+        )
+        self.assertEqual(reversed_entry.status_code, 201, reversed_entry.data)
+        self.assertEqual(reversed_entry.data["source_type"], "reversal")
+        by_account = {line["account"]: line for line in reversed_entry.data["lines"]}
+        self.assertEqual(Decimal(by_account[expense.id]["credit"]), Decimal("40.00"))
+        self.assertEqual(Decimal(by_account[cash.id]["debit"]), Decimal("40.00"))
+        again = self.client.post(f"/api/journals/{created.data['id']}/reverse/", format="json")
+        self.assertEqual(again.status_code, 400)
+        profit = self.client.get("/api/reports/profit-loss/?start=2026-04-01&end=2026-04-30")
+        self.assertEqual(profit.data["net"], "0.00")
