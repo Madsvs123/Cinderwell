@@ -20,11 +20,7 @@ Profit and loss sums income and expense between two dates. The balance sheet rea
 
 ## Still ahead
 
-These are the next pieces of the same ledger, not a second product:
-
-- A month-end close that locks posted periods. About 12 hours.
-- Bank statement lines matched to cash journals. About 16 hours.
-- Multi-currency amounts with a stored rate on the journal line. About 14 hours.
-- PDF invoice output from the invoice that is already stored. About 8 hours.
-
-The close plus either bank matching or currency is more than 20 hours of unfinished ledger work.
+- A month-end close that locks posted periods.
+- Bank statement lines matched to cash journals.
+- Multi-currency amounts with a stored rate on the journal line.
+- PDF invoice output from the invoice that is already stored.
