@@ -1,3 +1,7 @@
+import csv
+import hashlib
+import io
+from collections import OrderedDict
 from datetime import datetime
 from decimal import Decimal
 
@@ -77,6 +81,61 @@ def create_posted_entry(organization, entry_date, memo, lines, source_type="", s
         ]
     )
     return entry
+
+
+def source_token(value):
+    text = str(value)
+    if len(text) <= 40:
+        return text
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:40]
+
+
+@transaction.atomic
+def import_journal_csv(organization, text):
+    reader = csv.DictReader(io.StringIO(str(text).lstrip("\ufeff")))
+    if not reader.fieldnames:
+        raise ValidationError("CSV needs a header row.")
+    fields = {(name or "").strip().lower() for name in reader.fieldnames}
+    required = {"date", "account_code", "debit", "credit"}
+    if not required <= fields:
+        raise ValidationError("CSV must include date, account_code, debit, and credit columns.")
+    groups = OrderedDict()
+    for raw in reader:
+        row = {(key or "").strip().lower(): (value or "").strip() for key, value in raw.items()}
+        if not any(row.values()):
+            continue
+        if not row.get("date") or not row.get("account_code"):
+            raise ValidationError("Each CSV row needs a date and an account code.")
+        reference = row.get("reference") or f"{row['date']}|{row.get('memo', '')}"
+        groups.setdefault(reference, []).append(row)
+    if not groups:
+        raise ValidationError("CSV did not contain any journal lines.")
+    created = []
+    for reference, rows in groups.items():
+        try:
+            entry_date = datetime.strptime(rows[0]["date"], "%Y-%m-%d").date()
+        except ValueError as exc:
+            raise ValidationError(f"Unreadable date {rows[0]['date']}.") from exc
+        lines = [
+            {
+                "account": require_account(organization, row["account_code"]),
+                "description": row.get("description", ""),
+                "debit": row.get("debit") or 0,
+                "credit": row.get("credit") or 0,
+            }
+            for row in rows
+        ]
+        created.append(
+            create_posted_entry(
+                organization,
+                entry_date,
+                rows[0].get("memo") or "Imported journal",
+                lines,
+                source_type="csv",
+                source_id=source_token(reference),
+            )
+        )
+    return created
 
 
 def parse_optional_date(value):

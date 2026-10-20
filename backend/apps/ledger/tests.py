@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -256,3 +257,27 @@ class BooksFlowTests(TestCase):
             format="json",
         )
         self.assertEqual(allowed.status_code, 201, allowed.data)
+
+    def test_csv_import_posts_a_balanced_journal(self):
+        csv_text = (
+            "date,memo,account_code,description,debit,credit\n"
+            "2026-05-01,Paper,5100,Ream,18.00,0\n"
+            "2026-05-01,Paper,1000,Ream,0,18.00\n"
+        )
+        upload = SimpleUploadedFile("journals.csv", csv_text.encode(), content_type="text/csv")
+        imported = self.client.post("/api/journals/import-csv/", {"file": upload}, format="multipart")
+        self.assertEqual(imported.status_code, 201, imported.data)
+        self.assertEqual(len(imported.data), 1)
+        self.assertEqual(imported.data[0]["memo"], "Paper")
+        self.assertEqual(imported.data[0]["source_type"], "csv")
+        bad = (
+            "date,memo,account_code,debit,credit\n"
+            "2026-05-03,Broken,5100,9.00,0\n"
+            "2026-05-03,Broken,1000,0,4.00\n"
+        )
+        rejected = self.client.post(
+            "/api/journals/import-csv/",
+            {"file": SimpleUploadedFile("bad.csv", bad.encode(), content_type="text/csv")},
+            format="multipart",
+        )
+        self.assertEqual(rejected.status_code, 400)

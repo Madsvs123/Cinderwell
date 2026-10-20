@@ -29,6 +29,14 @@ export function JournalPage() {
     mutationFn: async (id: number) => api.post(`/periods/${id}/lock/`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["periods"] }),
   });
+  const importCsv = useMutation({
+    mutationFn: async (file: File) => {
+      const body = new FormData();
+      body.append("file", file);
+      return api.post("/journals/import-csv/", body);
+    },
+    onSuccess: refreshBooks,
+  });
   const reversedIds = new Set(
     (journals.data ?? []).filter((entry) => entry.source_type === "reversal").map((entry) => entry.source_id),
   );
@@ -58,6 +66,14 @@ export function JournalPage() {
         <select name="credit_account" required>{(accounts.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}</select>
         <input name="amount" placeholder="Amount" required />
         <button className="btn" type="submit">Post entry</button>
+      </form>
+      <form className="card row" style={{ marginBottom: 14 }} onSubmit={(event) => {
+        event.preventDefault();
+        const file = new FormData(event.currentTarget).get("file");
+        if (file instanceof File && file.size) importCsv.mutate(file);
+      }}>
+        <input name="file" type="file" accept=".csv,text/csv" required />
+        <button className="btn quiet" type="submit">Import CSV</button>
       </form>
       <div className="card">
         <table>

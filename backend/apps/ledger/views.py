@@ -13,7 +13,7 @@ from apps.ledger.serializers import (
     JournalEntrySerializer,
     JournalEntryWriteSerializer,
 )
-from apps.ledger.services import create_posted_entry, parse_optional_date, post_opening_balance, reverse_entry
+from apps.ledger.services import create_posted_entry, import_journal_csv, parse_optional_date, post_opening_balance, reverse_entry
 
 
 def organization_of(request):
@@ -61,6 +61,21 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(JournalEntrySerializer(reversed_entry).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["post"], url_path="import-csv")
+    def import_csv(self, request):
+        upload = request.FILES.get("file")
+        if upload:
+            text = upload.read().decode("utf-8-sig")
+        else:
+            text = request.data.get("csv") or ""
+        if not str(text).strip():
+            return Response({"detail": "Attach a CSV file."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            entries = import_journal_csv(organization_of(request), text)
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(JournalEntrySerializer(entries, many=True).data, status=status.HTTP_201_CREATED)
 
 
 class FiscalPeriodViewSet(viewsets.ModelViewSet):
