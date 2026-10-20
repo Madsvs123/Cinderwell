@@ -87,6 +87,10 @@ export function BillsPage() {
     mutationFn: (body: unknown) => api.post("/budgets/", body),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budgets"] }),
   });
+  const copyBudget = useMutation({
+    mutationFn: (body: unknown) => api.post("/budgets/copy/", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budgets"] }),
+  });
   const expenses = (accounts.data ?? []).filter((account) => account.type === "expense" || account.type === "income");
 
   return (
@@ -137,6 +141,15 @@ export function BillsPage() {
         <input name="month" type="number" min={1} max={12} defaultValue={new Date().getMonth() + 1} />
         <input name="amount" placeholder="Budget" required />
         <button className="btn quiet">Save budget</button>
+      </form>
+      <form className="card row" style={{ marginTop: 14 }} onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        copyBudget.mutate({ year: Number(data.get("year")), month: Number(data.get("month")) });
+      }}>
+        <input name="year" type="number" defaultValue={new Date().getFullYear()} />
+        <input name="month" type="number" min={1} max={12} defaultValue={new Date().getMonth() + 1} />
+        <button className="btn quiet" type="submit">Copy into next month</button>
       </form>
       <ul>{(budgets.data ?? []).map((line) => <li key={line.id}>{line.account_code} {line.year}-{line.month}: {money(line.amount)}</li>)}</ul>
     </>
