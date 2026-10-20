@@ -89,6 +89,51 @@ class AccountLedgerView(APIView):
         )
 
 
+class CashOutlookView(APIView):
+    def get(self, request):
+        from apps.invoicing.services import invoice_totals
+
+        org = organization_of(request)
+        invoice_rows = []
+        invoice_total = Decimal("0")
+        open_invoices = Invoice.objects.filter(organization=org, status=Invoice.Status.ISSUED).prefetch_related("lines")
+        for invoice in open_invoices:
+            _, _, total = invoice_totals(invoice)
+            invoice_total += total
+            invoice_rows.append(
+                {
+                    "id": invoice.id,
+                    "number": invoice.number,
+                    "customer_name": invoice.customer_name,
+                    "due_date": invoice.due_date.isoformat(),
+                    "total": f"{total:.2f}",
+                }
+            )
+        bill_rows = []
+        bill_total = Decimal("0")
+        for bill in Bill.objects.filter(organization=org, status=Bill.Status.OPEN):
+            amount = money(bill.amount)
+            bill_total += amount
+            bill_rows.append(
+                {
+                    "id": bill.id,
+                    "number": bill.number,
+                    "vendor_name": bill.vendor_name,
+                    "due_date": bill.due_date.isoformat(),
+                    "amount": f"{amount:.2f}",
+                }
+            )
+        return Response(
+            {
+                "open_invoices": f"{money(invoice_total):.2f}",
+                "open_bills": f"{money(bill_total):.2f}",
+                "net": f"{money(invoice_total - bill_total):.2f}",
+                "invoices": invoice_rows,
+                "bills": bill_rows,
+            }
+        )
+
+
 class SearchView(APIView):
     def get(self, request):
         query = (request.query_params.get("q") or "").strip()
