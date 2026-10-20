@@ -145,3 +145,38 @@ class BooksFlowTests(TestCase):
         sheet = self.client.get("/api/reports/balance-sheet/?as_of=2026-01-31")
         self.assertTrue(sheet.data["balanced"])
         self.assertEqual(sheet.data["totals"]["asset"], "800.00")
+
+    def test_account_ledger_keeps_a_running_balance(self):
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        equity = Account.objects.get(organization=self.user.organization, code="3000")
+        first = self.client.post(
+            "/api/journals/",
+            {
+                "entry_date": "2026-02-01",
+                "memo": "Seed cash",
+                "lines": [
+                    {"account": cash.id, "debit": "100.00", "credit": "0"},
+                    {"account": equity.id, "debit": "0", "credit": "100.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, 201, first.data)
+        second = self.client.post(
+            "/api/journals/",
+            {
+                "entry_date": "2026-02-10",
+                "memo": "Owner draw",
+                "lines": [
+                    {"account": equity.id, "debit": "25.00", "credit": "0"},
+                    {"account": cash.id, "debit": "0", "credit": "25.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(second.status_code, 201, second.data)
+        ledger = self.client.get(f"/api/reports/account-ledger/?account={cash.id}&start=2026-02-01&end=2026-02-28")
+        self.assertEqual(ledger.status_code, 200, ledger.data)
+        self.assertEqual(ledger.data["opening_balance"], "0.00")
+        self.assertEqual(ledger.data["closing_balance"], "75.00")
+        self.assertEqual([line["balance"] for line in ledger.data["lines"]], ["100.00", "75.00"])

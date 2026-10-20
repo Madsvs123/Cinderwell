@@ -152,6 +152,40 @@ def account_totals(organization, start=None, end=None):
     return sorted(rows, key=lambda item: item["code"])
 
 
+def account_ledger(organization, account, start=None, end=None):
+    posted = JournalLine.objects.filter(
+        account=account,
+        entry__organization=organization,
+        entry__status=JournalEntry.Status.POSTED,
+    )
+    opening = ZERO
+    if start:
+        prior = posted.filter(entry__entry_date__lt=start).aggregate(debit=Sum("debit"), credit=Sum("credit"))
+        opening = signed_balance(account.type, prior["debit"], prior["credit"])
+    lines = posted.select_related("entry")
+    if start:
+        lines = lines.filter(entry__entry_date__gte=start)
+    if end:
+        lines = lines.filter(entry__entry_date__lte=end)
+    running = opening
+    rows = []
+    for line in lines.order_by("entry__entry_date", "entry_id", "id"):
+        running += signed_balance(account.type, line.debit, line.credit)
+        rows.append(
+            {
+                "line_id": line.id,
+                "journal_id": line.entry_id,
+                "entry_date": line.entry.entry_date,
+                "memo": line.entry.memo,
+                "description": line.description,
+                "debit": money(line.debit),
+                "credit": money(line.credit),
+                "balance": money(running),
+            }
+        )
+    return {"opening_balance": money(opening), "closing_balance": money(running), "lines": rows}
+
+
 def require_account(organization, code):
     try:
         return Account.objects.get(organization=organization, code=code, is_active=True)

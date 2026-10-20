@@ -1,11 +1,13 @@
 from datetime import date
 from decimal import Decimal
 
+from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.budgets.models import BudgetLine
-from apps.ledger.services import account_totals, money
+from apps.ledger.models import Account
+from apps.ledger.services import account_ledger, account_totals, money
 from apps.ledger.views import organization_of
 
 
@@ -14,6 +16,37 @@ def _parse_date(value, fallback):
         return fallback
     year, month, day = [int(part) for part in value.split("-")]
     return date(year, month, day)
+
+
+class AccountLedgerView(APIView):
+    def get(self, request):
+        org = organization_of(request)
+        account = get_object_or_404(Account, pk=request.query_params.get("account"), organization=org)
+        start = _parse_date(request.query_params.get("start"), None)
+        end = _parse_date(request.query_params.get("end"), None)
+        report = account_ledger(org, account, start, end)
+        return Response(
+            {
+                "account_id": account.id,
+                "code": account.code,
+                "name": account.name,
+                "type": account.type,
+                "start": start.isoformat() if start else None,
+                "end": end.isoformat() if end else None,
+                "opening_balance": f"{report['opening_balance']:.2f}",
+                "closing_balance": f"{report['closing_balance']:.2f}",
+                "lines": [
+                    {
+                        **row,
+                        "entry_date": row["entry_date"].isoformat(),
+                        "debit": f"{row['debit']:.2f}",
+                        "credit": f"{row['credit']:.2f}",
+                        "balance": f"{row['balance']:.2f}",
+                    }
+                    for row in report["lines"]
+                ],
+            }
+        )
 
 
 class ProfitAndLossView(APIView):
