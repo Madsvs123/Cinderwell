@@ -110,6 +110,22 @@ def reverse_entry(entry, reversal_date=None, memo=""):
     )
 
 
+@transaction.atomic
+def post_opening_balance(organization, entry_date, memo, lines):
+    if JournalEntry.objects.filter(
+        organization=organization, source_type="opening", status=JournalEntry.Status.POSTED
+    ).exists():
+        raise ValidationError("Opening balances have already been posted.")
+    return create_posted_entry(
+        organization,
+        entry_date,
+        memo or "Opening balances",
+        lines,
+        source_type="opening",
+        source_id="opening",
+    )
+
+
 def account_totals(organization, start=None, end=None):
     lines = JournalLine.objects.filter(entry__organization=organization, entry__status=JournalEntry.Status.POSTED)
     if start:

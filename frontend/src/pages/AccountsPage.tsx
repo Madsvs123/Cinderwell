@@ -22,6 +22,14 @@ export function AccountsPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["accounts"] }),
   });
   const [error, setError] = useState("");
+  const [openingError, setOpeningError] = useState("");
+  const opening = useMutation({
+    mutationFn: async (body: unknown) => api.post("/opening-balances/", body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["journals"] });
+      queryClient.invalidateQueries({ queryKey: ["sheet"] });
+    },
+  });
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,6 +56,33 @@ export function AccountsPage() {
         </select>
         <button className="btn" type="submit">Add account</button>
         {error && <span className="error">{error}</span>}
+      </form>
+      <form className="card row" style={{ marginBottom: 14 }} onSubmit={(event) => {
+        event.preventDefault();
+        const data = new FormData(event.currentTarget);
+        const amount = String(data.get("amount"));
+        setOpeningError("");
+        opening.mutate(
+          {
+            entry_date: data.get("entry_date"),
+            memo: "Opening balances",
+            lines: [
+              { account: Number(data.get("debit_account")), debit: amount, credit: "0" },
+              { account: Number(data.get("credit_account")), debit: "0", credit: amount },
+            ],
+          },
+          {
+            onSuccess: () => event.currentTarget.reset(),
+            onError: () => setOpeningError("Opening balances are already posted, or the lines do not balance."),
+          },
+        );
+      }}>
+        <input name="entry_date" type="date" required />
+        <select name="debit_account" required>{(accounts.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.code} {account.name}</option>)}</select>
+        <select name="credit_account" required>{(accounts.data ?? []).map((account) => <option key={`c-${account.id}`} value={account.id}>{account.code} {account.name}</option>)}</select>
+        <input name="amount" placeholder="Opening amount" required />
+        <button className="btn quiet" type="submit">Post opening balance</button>
+        {openingError && <span className="error">{openingError}</span>}
       </form>
       <div className="card">
         <table>

@@ -3,10 +3,11 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.ledger.models import Account, JournalEntry
 from apps.ledger.serializers import AccountSerializer, JournalEntrySerializer, JournalEntryWriteSerializer
-from apps.ledger.services import create_posted_entry, parse_optional_date, reverse_entry
+from apps.ledger.services import create_posted_entry, parse_optional_date, post_opening_balance, reverse_entry
 
 
 def organization_of(request):
@@ -54,3 +55,20 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(JournalEntrySerializer(reversed_entry).data, status=status.HTTP_201_CREATED)
+
+
+class OpeningBalanceView(APIView):
+    def post(self, request):
+        serializer = JournalEntryWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        org = organization_of(request)
+        payload = serializer.validated_data
+        lines = []
+        for line in payload["lines"]:
+            account = get_object_or_404(Account, pk=line["account"], organization=org)
+            lines.append({**line, "account": account})
+        try:
+            entry = post_opening_balance(org, payload["entry_date"], payload.get("memo", ""), lines)
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(JournalEntrySerializer(entry).data, status=status.HTTP_201_CREATED)

@@ -125,3 +125,23 @@ class BooksFlowTests(TestCase):
         self.assertEqual(again.status_code, 400)
         profit = self.client.get("/api/reports/profit-loss/?start=2026-04-01&end=2026-04-30")
         self.assertEqual(profit.data["net"], "0.00")
+
+    def test_opening_balance_posts_once(self):
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        equity = Account.objects.get(organization=self.user.organization, code="3000")
+        payload = {
+            "entry_date": "2026-01-01",
+            "memo": "Opening balances",
+            "lines": [
+                {"account": cash.id, "debit": "800.00", "credit": "0"},
+                {"account": equity.id, "debit": "0", "credit": "800.00"},
+            ],
+        }
+        first = self.client.post("/api/opening-balances/", payload, format="json")
+        self.assertEqual(first.status_code, 201, first.data)
+        self.assertEqual(first.data["source_type"], "opening")
+        second = self.client.post("/api/opening-balances/", payload, format="json")
+        self.assertEqual(second.status_code, 400)
+        sheet = self.client.get("/api/reports/balance-sheet/?as_of=2026-01-31")
+        self.assertTrue(sheet.data["balanced"])
+        self.assertEqual(sheet.data["totals"]["asset"], "800.00")
