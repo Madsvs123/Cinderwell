@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from apps.budgets.models import BudgetLine
 from apps.ledger.models import Account
-from apps.ledger.services import account_ledger, account_totals, money
+from apps.ledger.services import account_ledger, account_totals, money, trial_balance
 from apps.ledger.views import organization_of
 
 
@@ -16,6 +16,21 @@ def _parse_date(value, fallback):
         return fallback
     year, month, day = [int(part) for part in value.split("-")]
     return date(year, month, day)
+
+
+class TrialBalanceView(APIView):
+    def get(self, request):
+        as_of = _parse_date(request.query_params.get("as_of"), date.today())
+        report = trial_balance(organization_of(request), as_of)
+        return Response(
+            {
+                "as_of": as_of.isoformat(),
+                "rows": [{**row, "debit": f"{row['debit']:.2f}", "credit": f"{row['credit']:.2f}"} for row in report["rows"]],
+                "debit_total": f"{report['debit_total']:.2f}",
+                "credit_total": f"{report['credit_total']:.2f}",
+                "balanced": report["balanced"],
+            }
+        )
 
 
 class AccountLedgerView(APIView):

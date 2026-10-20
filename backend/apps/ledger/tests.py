@@ -180,3 +180,29 @@ class BooksFlowTests(TestCase):
         self.assertEqual(ledger.data["opening_balance"], "0.00")
         self.assertEqual(ledger.data["closing_balance"], "75.00")
         self.assertEqual([line["balance"] for line in ledger.data["lines"]], ["100.00", "75.00"])
+
+    def test_trial_balance_columns_match(self):
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        income = Account.objects.get(organization=self.user.organization, code="4000")
+        posted = self.client.post(
+            "/api/journals/",
+            {
+                "entry_date": "2026-02-02",
+                "memo": "Cash sale",
+                "lines": [
+                    {"account": cash.id, "debit": "60.00", "credit": "0"},
+                    {"account": income.id, "debit": "0", "credit": "60.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(posted.status_code, 201, posted.data)
+        report = self.client.get("/api/reports/trial-balance/?as_of=2026-02-28")
+        self.assertEqual(report.status_code, 200, report.data)
+        self.assertTrue(report.data["balanced"])
+        self.assertEqual(report.data["debit_total"], report.data["credit_total"])
+        self.assertEqual(report.data["debit_total"], "60.00")
+        cash_row = next(row for row in report.data["rows"] if row["code"] == "1000")
+        income_row = next(row for row in report.data["rows"] if row["code"] == "4000")
+        self.assertEqual(cash_row["debit"], "60.00")
+        self.assertEqual(income_row["credit"], "60.00")

@@ -152,6 +152,45 @@ def account_totals(organization, start=None, end=None):
     return sorted(rows, key=lambda item: item["code"])
 
 
+def trial_balance(organization, as_of):
+    totals = {row["account_id"]: row for row in account_totals(organization, end=as_of)}
+    rows = []
+    debit_total = ZERO
+    credit_total = ZERO
+    accounts = Account.objects.filter(organization=organization).order_by("code")
+    for account in accounts:
+        row = totals.get(account.id)
+        if row is None and not account.is_active:
+            continue
+        balance = row["balance"] if row else ZERO
+        if account.type in DEBIT_NORMAL:
+            debit_col = balance if balance > 0 else ZERO
+            credit_col = -balance if balance < 0 else ZERO
+        else:
+            credit_col = balance if balance > 0 else ZERO
+            debit_col = -balance if balance < 0 else ZERO
+        debit_col = money(debit_col)
+        credit_col = money(credit_col)
+        debit_total += debit_col
+        credit_total += credit_col
+        rows.append(
+            {
+                "account_id": account.id,
+                "code": account.code,
+                "name": account.name,
+                "type": account.type,
+                "debit": debit_col,
+                "credit": credit_col,
+            }
+        )
+    return {
+        "rows": rows,
+        "debit_total": money(debit_total),
+        "credit_total": money(credit_total),
+        "balanced": money(debit_total) == money(credit_total),
+    }
+
+
 def account_ledger(organization, account, start=None, end=None):
     posted = JournalLine.objects.filter(
         account=account,
