@@ -1,13 +1,14 @@
 from datetime import date
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.budgets.models import BudgetLine
 from apps.ledger.models import Account
-from apps.ledger.services import account_ledger, account_totals, money, trial_balance
+from apps.ledger.services import account_ledger, account_totals, money, tax_summary, trial_balance
 from apps.ledger.views import organization_of
 
 
@@ -16,6 +17,28 @@ def _parse_date(value, fallback):
         return fallback
     year, month, day = [int(part) for part in value.split("-")]
     return date(year, month, day)
+
+
+class TaxSummaryView(APIView):
+    def get(self, request):
+        today = date.today()
+        start = _parse_date(request.query_params.get("start"), date(today.year, 1, 1))
+        end = _parse_date(request.query_params.get("end"), today)
+        try:
+            report = tax_summary(organization_of(request), start, end)
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=400)
+        return Response(
+            {
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "account_code": report["account_code"],
+                "account_name": report["account_name"],
+                "collected": f"{report['collected']:.2f}",
+                "settled": f"{report['settled']:.2f}",
+                "net_payable": f"{report['net_payable']:.2f}",
+            }
+        )
 
 
 class TrialBalanceView(APIView):

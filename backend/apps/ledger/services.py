@@ -297,6 +297,28 @@ def account_ledger(organization, account, start=None, end=None):
     return {"opening_balance": money(opening), "closing_balance": money(running), "lines": rows}
 
 
+def tax_summary(organization, start, end):
+    account = Account.objects.filter(organization=organization, code="2100").first()
+    if account is None:
+        raise ValidationError("Tax payable account 2100 is missing.")
+    totals = JournalLine.objects.filter(
+        account=account,
+        entry__organization=organization,
+        entry__status=JournalEntry.Status.POSTED,
+        entry__entry_date__gte=start,
+        entry__entry_date__lte=end,
+    ).aggregate(debit=Sum("debit"), credit=Sum("credit"))
+    collected = money(totals["credit"])
+    settled = money(totals["debit"])
+    return {
+        "account_code": account.code,
+        "account_name": account.name,
+        "collected": collected,
+        "settled": settled,
+        "net_payable": money(collected - settled),
+    }
+
+
 def require_account(organization, code):
     try:
         return Account.objects.get(organization=organization, code=code, is_active=True)

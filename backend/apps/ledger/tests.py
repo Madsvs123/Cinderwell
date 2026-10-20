@@ -54,6 +54,10 @@ class BooksFlowTests(TestCase):
         self.assertIn("text/html", preview["Content-Type"])
         self.assertIn(invoice.data["number"], preview.content.decode())
         self.assertIn("Sample Client", preview.content.decode())
+        tax_report = self.client.get("/api/reports/tax-summary/?start=2026-03-01&end=2026-03-31")
+        self.assertEqual(tax_report.status_code, 200, tax_report.data)
+        self.assertEqual(tax_report.data["collected"], "20.00")
+        self.assertEqual(tax_report.data["net_payable"], "20.00")
 
         expense = Account.objects.get(organization=self.user.organization, code="5100")
         bill = self.client.post(
