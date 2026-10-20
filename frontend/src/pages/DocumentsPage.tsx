@@ -55,6 +55,11 @@ export function InvoicesPage() {
                 <td>
                   {invoice.status === "draft" && <button className="btn quiet" onClick={() => act.mutate(`/invoices/${invoice.id}/issue/`)}>Issue</button>}
                   {invoice.status === "issued" && <button className="btn quiet" onClick={() => act.mutate(`/invoices/${invoice.id}/pay/`)}>Mark paid</button>}
+                  <button className="btn quiet" type="button" onClick={async () => {
+                    const response = await api.get(`/invoices/${invoice.id}/preview/`, { responseType: "text" });
+                    const url = URL.createObjectURL(new Blob([response.data], { type: "text/html" }));
+                    window.open(url, "_blank");
+                  }}>Preview</button>
                 </td>
               </tr>
             ))}

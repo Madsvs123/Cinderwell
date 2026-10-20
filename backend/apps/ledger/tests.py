@@ -49,6 +49,11 @@ class BooksFlowTests(TestCase):
         issued = self.client.post(f"/api/invoices/{invoice.data['id']}/issue/")
         self.assertEqual(issued.status_code, 200)
         self.assertEqual(issued.data["total"], "220.00")
+        preview = self.client.get(f"/api/invoices/{invoice.data['id']}/preview/")
+        self.assertEqual(preview.status_code, 200)
+        self.assertIn("text/html", preview["Content-Type"])
+        self.assertIn(invoice.data["number"], preview.content.decode())
+        self.assertIn("Sample Client", preview.content.decode())
 
         expense = Account.objects.get(organization=self.user.organization, code="5100")
         bill = self.client.post(
