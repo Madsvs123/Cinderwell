@@ -1,3 +1,4 @@
+import calendar
 import csv
 import hashlib
 import io
@@ -10,7 +11,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine
+from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine, RecurringJournal
 
 ZERO = Decimal("0.00")
 DEBIT_NORMAL = {Account.Type.ASSET, Account.Type.EXPENSE}
@@ -301,3 +302,53 @@ def require_account(organization, code):
         return Account.objects.get(organization=organization, code=code, is_active=True)
     except Account.DoesNotExist as exc:
         raise ValidationError(f"Missing account {code}.") from exc
+
+
+def add_months(value, months):
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+@transaction.atomic
+def generate_next_recurring(template):
+    template = RecurringJournal.objects.select_for_update().get(pk=template.pk)
+    if not template.active:
+        raise ValidationError("This recurring journal is inactive.")
+    if template.interval_months < 1:
+        raise ValidationError("Interval must be at least one month.")
+    lines = [
+        {
+            "account": line.account,
+            "description": line.description,
+            "debit": line.debit,
+            "credit": line.credit,
+        }
+        for line in template.lines.select_related("account")
+    ]
+    entry = create_posted_entry(
+        template.organization,
+        template.next_date,
+        template.memo,
+        lines,
+        source_type="recurring",
+        source_id=source_token(f"{template.id}:{template.next_date.isoformat()}"),
+    )
+    template.next_date = add_months(template.next_date, template.interval_months)
+    template.save(update_fields=["next_date"])
+    return entry
+
+
+def generate_due_recurring(today=None):
+    today = today or timezone.localdate()
+    posted = []
+    due = list(RecurringJournal.objects.filter(active=True, next_date__lte=today).order_by("id"))
+    for template in due:
+        catch_up = 0
+        while template.next_date <= today and template.active and catch_up < 36:
+            posted.append(generate_next_recurring(template))
+            catch_up += 1
+            template.refresh_from_db(fields=["next_date", "active"])
+    return posted

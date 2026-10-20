@@ -6,14 +6,22 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry
+from apps.ledger.models import Account, FiscalPeriod, JournalEntry, RecurringJournal
 from apps.ledger.serializers import (
     AccountSerializer,
     FiscalPeriodSerializer,
     JournalEntrySerializer,
     JournalEntryWriteSerializer,
+    RecurringJournalSerializer,
 )
-from apps.ledger.services import create_posted_entry, import_journal_csv, parse_optional_date, post_opening_balance, reverse_entry
+from apps.ledger.services import (
+    create_posted_entry,
+    generate_next_recurring,
+    import_journal_csv,
+    parse_optional_date,
+    post_opening_balance,
+    reverse_entry,
+)
 
 
 def organization_of(request):
@@ -99,6 +107,27 @@ class FiscalPeriodViewSet(viewsets.ModelViewSet):
         period.locked_at = timezone.now()
         period.save(update_fields=["locked", "locked_at"])
         return Response(self.get_serializer(period).data)
+
+
+class RecurringJournalViewSet(viewsets.ModelViewSet):
+    serializer_class = RecurringJournalSerializer
+    http_method_names = ["get", "post", "patch", "head", "options"]
+
+    def get_queryset(self):
+        return RecurringJournal.objects.filter(organization=organization_of(self.request)).prefetch_related("lines__account")
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["organization"] = organization_of(self.request)
+        return context
+
+    @action(detail=True, methods=["post"])
+    def generate(self, request, pk=None):
+        try:
+            entry = generate_next_recurring(self.get_object())
+        except ValidationError as exc:
+            return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(JournalEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
 
 class OpeningBalanceView(APIView):

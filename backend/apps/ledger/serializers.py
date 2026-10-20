@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine
+from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine, RecurringJournal, RecurringJournalLine
+from apps.ledger.services import money
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -55,6 +56,65 @@ class FiscalPeriodSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return FiscalPeriod.objects.create(organization=self.context["organization"], **validated_data)
+
+
+class RecurringLineSerializer(serializers.ModelSerializer):
+    account_code = serializers.CharField(source="account.code", read_only=True)
+
+    class Meta:
+        model = RecurringJournalLine
+        fields = ("id", "account", "account_code", "description", "debit", "credit")
+        read_only_fields = ("id", "account_code")
+
+
+class RecurringJournalSerializer(serializers.ModelSerializer):
+    lines = RecurringLineSerializer(many=True)
+
+    class Meta:
+        model = RecurringJournal
+        fields = ("id", "memo", "next_date", "interval_months", "active", "lines")
+        read_only_fields = ("id",)
+
+    def validate_interval_months(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Interval must be at least one month.")
+        return value
+
+    def validate(self, attrs):
+        lines = attrs.get("lines")
+        if lines is None:
+            return attrs
+        if len(lines) < 2:
+            raise serializers.ValidationError("A recurring journal needs at least two lines.")
+        debit_total = sum((money(line.get("debit")) for line in lines), money(0))
+        credit_total = sum((money(line.get("credit")) for line in lines), money(0))
+        if debit_total != credit_total or debit_total == 0:
+            raise serializers.ValidationError("Recurring lines must balance.")
+        org = self.context["organization"]
+        for line in lines:
+            if line["account"].organization_id != org.id:
+                raise serializers.ValidationError("Account is outside these books.")
+        return attrs
+
+    def create(self, validated_data):
+        lines = validated_data.pop("lines")
+        template = RecurringJournal.objects.create(organization=self.context["organization"], **validated_data)
+        RecurringJournalLine.objects.bulk_create(
+            [RecurringJournalLine(template=template, **line) for line in lines]
+        )
+        return template
+
+    def update(self, instance, validated_data):
+        lines = validated_data.pop("lines", None)
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.save()
+        if lines is not None:
+            instance.lines.all().delete()
+            RecurringJournalLine.objects.bulk_create(
+                [RecurringJournalLine(template=instance, **line) for line in lines]
+            )
+        return instance
 
 
 class JournalEntryWriteSerializer(serializers.Serializer):

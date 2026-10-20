@@ -1,6 +1,6 @@
 import { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Account, FiscalPeriod, Journal, api } from "../api/client";
+import { Account, FiscalPeriod, Journal, RecurringJournal, api } from "../api/client";
 import { money, prettyDate } from "../lib/format";
 
 export function JournalPage() {
@@ -8,6 +8,7 @@ export function JournalPage() {
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: async () => (await api.get<{ results: Account[] }>("/accounts/")).data.results });
   const journals = useQuery({ queryKey: ["journals"], queryFn: async () => (await api.get<{ results: Journal[] }>("/journals/")).data.results });
   const periods = useQuery({ queryKey: ["periods"], queryFn: async () => (await api.get<{ results: FiscalPeriod[] }>("/periods/")).data.results });
+  const recurring = useQuery({ queryKey: ["recurring"], queryFn: async () => (await api.get<{ results: RecurringJournal[] }>("/recurring/")).data.results });
   const refreshBooks = () => {
     queryClient.invalidateQueries({ queryKey: ["journals"] });
     queryClient.invalidateQueries({ queryKey: ["profit"] });
@@ -36,6 +37,21 @@ export function JournalPage() {
       return api.post("/journals/import-csv/", body);
     },
     onSuccess: refreshBooks,
+  });
+  const saveRecurring = useMutation({
+    mutationFn: async (body: unknown) => api.post("/recurring/", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recurring"] }),
+  });
+  const generateRecurring = useMutation({
+    mutationFn: async (id: number) => api.post(`/recurring/${id}/generate/`),
+    onSuccess: () => {
+      refreshBooks();
+      queryClient.invalidateQueries({ queryKey: ["recurring"] });
+    },
+  });
+  const stopRecurring = useMutation({
+    mutationFn: async (id: number) => api.patch(`/recurring/${id}/`, { active: false }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["recurring"] }),
   });
   const reversedIds = new Set(
     (journals.data ?? []).filter((entry) => entry.source_type === "reversal").map((entry) => entry.source_id),
@@ -118,6 +134,48 @@ export function JournalPage() {
                 <td>{prettyDate(period.end_date)}</td>
                 <td>{period.locked ? "Locked" : "Open"}</td>
                 <td>{!period.locked && <button className="btn quiet" type="button" onClick={() => lockPeriod.mutate(period.id)}>Lock</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card" style={{ marginTop: 14 }}>
+        <p className="tag">Recurring journals</p>
+        <form className="row" style={{ marginBottom: 12 }} onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          const amount = String(data.get("amount"));
+          saveRecurring.mutate({
+            memo: data.get("memo"),
+            next_date: data.get("next_date"),
+            interval_months: Number(data.get("interval_months") || 1),
+            lines: [
+              { account: Number(data.get("debit_account")), debit: amount, credit: "0" },
+              { account: Number(data.get("credit_account")), debit: "0", credit: amount },
+            ],
+          });
+          event.currentTarget.reset();
+        }}>
+          <input name="memo" placeholder="Monthly rent" required />
+          <input name="next_date" type="date" required />
+          <input name="interval_months" type="number" min={1} defaultValue={1} />
+          <select name="debit_account" required>{(accounts.data ?? []).map((account) => <option key={`rd-${account.id}`} value={account.id}>{account.code}</option>)}</select>
+          <select name="credit_account" required>{(accounts.data ?? []).map((account) => <option key={`rc-${account.id}`} value={account.id}>{account.code}</option>)}</select>
+          <input name="amount" placeholder="Amount" required />
+          <button className="btn quiet" type="submit">Save template</button>
+        </form>
+        <table>
+          <thead><tr><th>Memo</th><th>Next</th><th>Every</th><th></th></tr></thead>
+          <tbody>
+            {(recurring.data ?? []).filter((template) => template.active).map((template) => (
+              <tr key={template.id}>
+                <td>{template.memo}</td>
+                <td>{prettyDate(template.next_date)}</td>
+                <td>{template.interval_months} mo</td>
+                <td>
+                  <button className="btn quiet" type="button" onClick={() => generateRecurring.mutate(template.id)}>Post next</button>
+                  <button className="btn quiet" type="button" onClick={() => stopRecurring.mutate(template.id)}>Stop</button>
+                </td>
               </tr>
             ))}
           </tbody>

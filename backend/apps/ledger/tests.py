@@ -1,8 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -281,3 +283,47 @@ class BooksFlowTests(TestCase):
             format="multipart",
         )
         self.assertEqual(rejected.status_code, 400)
+
+    def test_recurring_template_posts_the_next_journal(self):
+        expense = Account.objects.get(organization=self.user.organization, code="5100")
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        future = date(date.today().year + 1, 6, 1)
+        created = self.client.post(
+            "/api/recurring/",
+            {
+                "memo": "Monthly hosting",
+                "next_date": future.isoformat(),
+                "interval_months": 1,
+                "lines": [
+                    {"account": expense.id, "debit": "12.00", "credit": "0", "description": "Host"},
+                    {"account": cash.id, "debit": "0", "credit": "12.00", "description": "Host"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        generated = self.client.post(f"/api/recurring/{created.data['id']}/generate/")
+        self.assertEqual(generated.status_code, 201, generated.data)
+        self.assertEqual(generated.data["memo"], "Monthly hosting")
+        self.assertEqual(generated.data["source_type"], "recurring")
+        listed = self.client.get("/api/recurring/")
+        self.assertEqual(listed.data["results"][0]["next_date"], date(future.year, 7, 1).isoformat())
+
+        due = (date.today() - timedelta(days=1)).isoformat()
+        scheduled = self.client.post(
+            "/api/recurring/",
+            {
+                "memo": "Due yesterday",
+                "next_date": due,
+                "interval_months": 1,
+                "lines": [
+                    {"account": expense.id, "debit": "3.00", "credit": "0"},
+                    {"account": cash.id, "debit": "0", "credit": "3.00"},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(scheduled.status_code, 201, scheduled.data)
+        output = StringIO()
+        call_command("generate_recurring", stdout=output)
+        self.assertIn("Posted 1", output.getvalue())

@@ -57,6 +57,32 @@ class FiscalPeriod(models.Model):
         return self.name
 
 
+class RecurringJournal(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="recurring_journals")
+    memo = models.CharField(max_length=240)
+    next_date = models.DateField()
+    interval_months = models.PositiveSmallIntegerField(default=1)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["next_date", "id"]
+
+    def __str__(self):
+        return self.memo
+
+
+class RecurringJournalLine(models.Model):
+    template = models.ForeignKey(RecurringJournal, on_delete=models.CASCADE, related_name="lines")
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="recurring_lines")
+    description = models.CharField(max_length=240, blank=True)
+    debit = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    credit = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    class Meta:
+        ordering = ["id"]
+
+
 class JournalLine(models.Model):
     entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="lines")
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="lines")
