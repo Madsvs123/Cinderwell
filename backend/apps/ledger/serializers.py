@@ -1,0 +1,40 @@
+from rest_framework import serializers
+
+from apps.ledger.models import Account, JournalEntry, JournalLine
+
+
+class AccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ("id", "code", "name", "type", "is_active")
+        read_only_fields = ("id",)
+
+
+class JournalLineSerializer(serializers.ModelSerializer):
+    account_code = serializers.CharField(source="account.code", read_only=True)
+    account_name = serializers.CharField(source="account.name", read_only=True)
+
+    class Meta:
+        model = JournalLine
+        fields = ("id", "account", "account_code", "account_name", "description", "debit", "credit")
+
+
+class JournalLineWriteSerializer(serializers.Serializer):
+    account = serializers.IntegerField()
+    description = serializers.CharField(required=False, allow_blank=True)
+    debit = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, default=0)
+    credit = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, default=0)
+
+
+class JournalEntrySerializer(serializers.ModelSerializer):
+    lines = JournalLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = JournalEntry
+        fields = ("id", "entry_date", "memo", "status", "source_type", "source_id", "lines", "created_at")
+
+
+class JournalEntryWriteSerializer(serializers.Serializer):
+    entry_date = serializers.DateField()
+    memo = serializers.CharField(required=False, allow_blank=True)
+    lines = JournalLineWriteSerializer(many=True)
