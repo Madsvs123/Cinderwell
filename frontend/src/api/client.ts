@@ -23,6 +23,7 @@ export type Bill = {
 };
 export type Budget = { id: number; account: number; account_code: string; account_name: string; year: number; month: number; amount: string };
 export type FiscalPeriod = { id: number; name: string; start_date: string; end_date: string; locked: boolean; locked_at: string | null };
+export type AuditEvent = { id: number; action: string; journal: number; journal_memo: string; entry_date: string; detail: string; created_at: string };
 export type RecurringJournal = {
   id: number; memo: string; next_date: string; interval_months: number; active: boolean;
   lines: { account: number; account_code: string; description: string; debit: string; credit: string }[];

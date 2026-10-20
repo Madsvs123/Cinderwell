@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine, RecurringJournal, RecurringJournalLine
+from apps.ledger.models import (
+    Account,
+    AuditEvent,
+    FiscalPeriod,
+    JournalEntry,
+    JournalLine,
+    RecurringJournal,
+    RecurringJournalLine,
+)
 from apps.ledger.services import money
 
 
@@ -115,6 +123,15 @@ class RecurringJournalSerializer(serializers.ModelSerializer):
                 [RecurringJournalLine(template=instance, **line) for line in lines]
             )
         return instance
+
+
+class AuditEventSerializer(serializers.ModelSerializer):
+    journal_memo = serializers.CharField(source="journal.memo", read_only=True)
+    entry_date = serializers.DateField(source="journal.entry_date", read_only=True)
+
+    class Meta:
+        model = AuditEvent
+        fields = ("id", "action", "journal", "journal_memo", "entry_date", "detail", "created_at")
 
 
 class JournalEntryWriteSerializer(serializers.Serializer):

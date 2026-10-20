@@ -92,3 +92,18 @@ class JournalLine(models.Model):
 
     class Meta:
         ordering = ["id"]
+
+
+class AuditEvent(models.Model):
+    class Action(models.TextChoices):
+        POSTED = "posted", "Posted"
+        REVERSED = "reversed", "Reversed"
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="audit_events")
+    action = models.CharField(max_length=16, choices=Action.choices)
+    journal = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="audit_events")
+    detail = models.CharField(max_length=240, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]

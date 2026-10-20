@@ -11,7 +11,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine, RecurringJournal
+from apps.ledger.models import Account, AuditEvent, FiscalPeriod, JournalEntry, JournalLine, RecurringJournal
 
 ZERO = Decimal("0.00")
 DEBIT_NORMAL = {Account.Type.ASSET, Account.Type.EXPENSE}
@@ -80,6 +80,12 @@ def create_posted_entry(organization, entry_date, memo, lines, source_type="", s
             JournalLine(entry=entry, account=account, description=description, debit=debit, credit=credit)
             for account, description, debit, credit in cleaned
         ]
+    )
+    AuditEvent.objects.create(
+        organization=organization,
+        action=AuditEvent.Action.REVERSED if source_type == "reversal" else AuditEvent.Action.POSTED,
+        journal=entry,
+        detail=(memo or "")[:240],
     )
     return entry
 

@@ -6,9 +6,10 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.ledger.models import Account, FiscalPeriod, JournalEntry, RecurringJournal
+from apps.ledger.models import Account, AuditEvent, FiscalPeriod, JournalEntry, RecurringJournal
 from apps.ledger.serializers import (
     AccountSerializer,
+    AuditEventSerializer,
     FiscalPeriodSerializer,
     JournalEntrySerializer,
     JournalEntryWriteSerializer,
@@ -128,6 +129,13 @@ class RecurringJournalViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(JournalEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
+
+
+class AuditEventViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AuditEventSerializer
+
+    def get_queryset(self):
+        return AuditEvent.objects.filter(organization=organization_of(self.request)).select_related("journal")
 
 
 class OpeningBalanceView(APIView):

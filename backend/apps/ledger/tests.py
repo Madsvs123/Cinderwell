@@ -145,6 +145,11 @@ class BooksFlowTests(TestCase):
         self.assertEqual(again.status_code, 400)
         profit = self.client.get("/api/reports/profit-loss/?start=2026-04-01&end=2026-04-30")
         self.assertEqual(profit.data["net"], "0.00")
+        audit = self.client.get("/api/audit/")
+        self.assertEqual(audit.status_code, 200, audit.data)
+        actions = [row["action"] for row in audit.data["results"]]
+        self.assertEqual(actions.count("posted"), 1)
+        self.assertEqual(actions.count("reversed"), 1)
 
     def test_opening_balance_posts_once(self):
         cash = Account.objects.get(organization=self.user.organization, code="1000")

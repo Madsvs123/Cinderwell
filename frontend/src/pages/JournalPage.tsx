@@ -1,6 +1,6 @@
 import { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Account, FiscalPeriod, Journal, RecurringJournal, api } from "../api/client";
+import { Account, AuditEvent, FiscalPeriod, Journal, RecurringJournal, api } from "../api/client";
 import { money, prettyDate } from "../lib/format";
 
 export function JournalPage() {
@@ -9,10 +9,12 @@ export function JournalPage() {
   const journals = useQuery({ queryKey: ["journals"], queryFn: async () => (await api.get<{ results: Journal[] }>("/journals/")).data.results });
   const periods = useQuery({ queryKey: ["periods"], queryFn: async () => (await api.get<{ results: FiscalPeriod[] }>("/periods/")).data.results });
   const recurring = useQuery({ queryKey: ["recurring"], queryFn: async () => (await api.get<{ results: RecurringJournal[] }>("/recurring/")).data.results });
+  const audit = useQuery({ queryKey: ["audit"], queryFn: async () => (await api.get<{ results: AuditEvent[] }>("/audit/")).data.results });
   const refreshBooks = () => {
     queryClient.invalidateQueries({ queryKey: ["journals"] });
     queryClient.invalidateQueries({ queryKey: ["profit"] });
     queryClient.invalidateQueries({ queryKey: ["sheet"] });
+    queryClient.invalidateQueries({ queryKey: ["audit"] });
   };
   const post = useMutation({
     mutationFn: async (body: unknown) => api.post("/journals/", body),
@@ -176,6 +178,21 @@ export function JournalPage() {
                   <button className="btn quiet" type="button" onClick={() => generateRecurring.mutate(template.id)}>Post next</button>
                   <button className="btn quiet" type="button" onClick={() => stopRecurring.mutate(template.id)}>Stop</button>
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+      <section className="card" style={{ marginTop: 14 }}>
+        <p className="tag">Audit log</p>
+        <table>
+          <thead><tr><th>When</th><th>Action</th><th>Memo</th></tr></thead>
+          <tbody>
+            {(audit.data ?? []).map((event) => (
+              <tr key={event.id}>
+                <td>{prettyDate(event.entry_date)}</td>
+                <td>{event.action}</td>
+                <td>{event.detail || event.journal_memo}</td>
               </tr>
             ))}
           </tbody>
