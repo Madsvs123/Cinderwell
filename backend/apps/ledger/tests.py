@@ -206,3 +206,24 @@ class BooksFlowTests(TestCase):
         income_row = next(row for row in report.data["rows"] if row["code"] == "4000")
         self.assertEqual(cash_row["debit"], "60.00")
         self.assertEqual(income_row["credit"], "60.00")
+
+    def test_fiscal_period_can_be_locked(self):
+        created = self.client.post(
+            "/api/periods/",
+            {"name": "March 2026", "start_date": "2026-03-01", "end_date": "2026-03-31"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, 201, created.data)
+        self.assertFalse(created.data["locked"])
+        overlap = self.client.post(
+            "/api/periods/",
+            {"name": "Mid March", "start_date": "2026-03-15", "end_date": "2026-04-15"},
+            format="json",
+        )
+        self.assertEqual(overlap.status_code, 400)
+        locked = self.client.post(f"/api/periods/{created.data['id']}/lock/")
+        self.assertEqual(locked.status_code, 200, locked.data)
+        self.assertTrue(locked.data["locked"])
+        self.assertIsNotNone(locked.data["locked_at"])
+        again = self.client.post(f"/api/periods/{created.data['id']}/lock/")
+        self.assertEqual(again.status_code, 400)

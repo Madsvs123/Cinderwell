@@ -22,4 +22,5 @@ export type Bill = {
   amount: string; expense_account: number; expense_account_code: string; memo: string; status: string;
 };
 export type Budget = { id: number; account: number; account_code: string; account_name: string; year: number; month: number; amount: string };
+export type FiscalPeriod = { id: number; name: string; start_date: string; end_date: string; locked: boolean; locked_at: string | null };
 export type Page<T> = { results: T[] };

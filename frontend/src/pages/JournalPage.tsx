@@ -1,12 +1,13 @@
 import { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Account, Journal, api } from "../api/client";
+import { Account, FiscalPeriod, Journal, api } from "../api/client";
 import { money, prettyDate } from "../lib/format";
 
 export function JournalPage() {
   const queryClient = useQueryClient();
   const accounts = useQuery({ queryKey: ["accounts"], queryFn: async () => (await api.get<{ results: Account[] }>("/accounts/")).data.results });
   const journals = useQuery({ queryKey: ["journals"], queryFn: async () => (await api.get<{ results: Journal[] }>("/journals/")).data.results });
+  const periods = useQuery({ queryKey: ["periods"], queryFn: async () => (await api.get<{ results: FiscalPeriod[] }>("/periods/")).data.results });
   const refreshBooks = () => {
     queryClient.invalidateQueries({ queryKey: ["journals"] });
     queryClient.invalidateQueries({ queryKey: ["profit"] });
@@ -19,6 +20,14 @@ export function JournalPage() {
   const reverse = useMutation({
     mutationFn: async (id: number) => api.post(`/journals/${id}/reverse/`),
     onSuccess: refreshBooks,
+  });
+  const savePeriod = useMutation({
+    mutationFn: async (body: unknown) => api.post("/periods/", body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["periods"] }),
+  });
+  const lockPeriod = useMutation({
+    mutationFn: async (id: number) => api.post(`/periods/${id}/lock/`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["periods"] }),
   });
   const reversedIds = new Set(
     (journals.data ?? []).filter((entry) => entry.source_type === "reversal").map((entry) => entry.source_id),
@@ -70,6 +79,34 @@ export function JournalPage() {
           </tbody>
         </table>
       </div>
+      <section className="card" style={{ marginTop: 14 }}>
+        <p className="tag">Fiscal periods</p>
+        <form className="row" style={{ marginBottom: 12 }} onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          savePeriod.mutate({ name: data.get("name"), start_date: data.get("start_date"), end_date: data.get("end_date") });
+          event.currentTarget.reset();
+        }}>
+          <input name="name" placeholder="March 2026" required />
+          <input name="start_date" type="date" required />
+          <input name="end_date" type="date" required />
+          <button className="btn quiet" type="submit">Add period</button>
+        </form>
+        <table>
+          <thead><tr><th>Name</th><th>Start</th><th>End</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            {(periods.data ?? []).map((period) => (
+              <tr key={period.id}>
+                <td>{period.name}</td>
+                <td>{prettyDate(period.start_date)}</td>
+                <td>{prettyDate(period.end_date)}</td>
+                <td>{period.locked ? "Locked" : "Open"}</td>
+                <td>{!period.locked && <button className="btn quiet" type="button" onClick={() => lockPeriod.mutate(period.id)}>Lock</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
     </>
   );
 }

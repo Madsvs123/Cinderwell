@@ -42,6 +42,21 @@ class JournalEntry(models.Model):
         ordering = ["-entry_date", "-id"]
 
 
+class FiscalPeriod(models.Model):
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="fiscal_periods")
+    name = models.CharField(max_length=80)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    locked = models.BooleanField(default=False)
+    locked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-start_date", "-id"]
+
+    def __str__(self):
+        return self.name
+
+
 class JournalLine(models.Model):
     entry = models.ForeignKey(JournalEntry, on_delete=models.CASCADE, related_name="lines")
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name="lines")

@@ -1,12 +1,18 @@
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.ledger.models import Account, JournalEntry
-from apps.ledger.serializers import AccountSerializer, JournalEntrySerializer, JournalEntryWriteSerializer
+from apps.ledger.models import Account, FiscalPeriod, JournalEntry
+from apps.ledger.serializers import (
+    AccountSerializer,
+    FiscalPeriodSerializer,
+    JournalEntrySerializer,
+    JournalEntryWriteSerializer,
+)
 from apps.ledger.services import create_posted_entry, parse_optional_date, post_opening_balance, reverse_entry
 
 
@@ -55,6 +61,29 @@ class JournalEntryViewSet(viewsets.ModelViewSet):
         except ValidationError as exc:
             return Response({"detail": exc.messages}, status=status.HTTP_400_BAD_REQUEST)
         return Response(JournalEntrySerializer(reversed_entry).data, status=status.HTTP_201_CREATED)
+
+
+class FiscalPeriodViewSet(viewsets.ModelViewSet):
+    serializer_class = FiscalPeriodSerializer
+    http_method_names = ["get", "post", "head", "options"]
+
+    def get_queryset(self):
+        return FiscalPeriod.objects.filter(organization=organization_of(self.request))
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["organization"] = organization_of(self.request)
+        return context
+
+    @action(detail=True, methods=["post"])
+    def lock(self, request, pk=None):
+        period = self.get_object()
+        if period.locked:
+            return Response({"detail": "This period is already locked."}, status=status.HTTP_400_BAD_REQUEST)
+        period.locked = True
+        period.locked_at = timezone.now()
+        period.save(update_fields=["locked", "locked_at"])
+        return Response(self.get_serializer(period).data)
 
 
 class OpeningBalanceView(APIView):
