@@ -227,3 +227,32 @@ class BooksFlowTests(TestCase):
         self.assertIsNotNone(locked.data["locked_at"])
         again = self.client.post(f"/api/periods/{created.data['id']}/lock/")
         self.assertEqual(again.status_code, 400)
+
+    def test_locked_period_rejects_new_posts(self):
+        cash = Account.objects.get(organization=self.user.organization, code="1000")
+        equity = Account.objects.get(organization=self.user.organization, code="3000")
+        period = self.client.post(
+            "/api/periods/",
+            {"name": "April 2026", "start_date": "2026-04-01", "end_date": "2026-04-30"},
+            format="json",
+        )
+        self.assertEqual(period.status_code, 201, period.data)
+        locked = self.client.post(f"/api/periods/{period.data['id']}/lock/")
+        self.assertEqual(locked.status_code, 200, locked.data)
+        lines = [
+            {"account": cash.id, "debit": "15.00", "credit": "0"},
+            {"account": equity.id, "debit": "0", "credit": "15.00"},
+        ]
+        rejected = self.client.post(
+            "/api/journals/",
+            {"entry_date": "2026-04-12", "memo": "Too late", "lines": lines},
+            format="json",
+        )
+        self.assertEqual(rejected.status_code, 400, rejected.data)
+        self.assertIn("locked", " ".join(rejected.data["detail"]).lower())
+        allowed = self.client.post(
+            "/api/journals/",
+            {"entry_date": "2026-05-02", "memo": "Next month", "lines": lines},
+            format="json",
+        )
+        self.assertEqual(allowed.status_code, 201, allowed.data)

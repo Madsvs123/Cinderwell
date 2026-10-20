@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from apps.ledger.models import Account, JournalEntry, JournalLine
+from apps.ledger.models import Account, FiscalPeriod, JournalEntry, JournalLine
 
 ZERO = Decimal("0.00")
 DEBIT_NORMAL = {Account.Type.ASSET, Account.Type.EXPENSE}
@@ -14,6 +14,15 @@ DEBIT_NORMAL = {Account.Type.ASSET, Account.Type.EXPENSE}
 
 def money(value):
     return Decimal(value or 0).quantize(Decimal("0.01"))
+
+
+def period_is_locked(organization, entry_date):
+    return FiscalPeriod.objects.filter(
+        organization=organization,
+        locked=True,
+        start_date__lte=entry_date,
+        end_date__gte=entry_date,
+    ).exists()
 
 
 def signed_balance(account_type, debit, credit):
@@ -32,6 +41,9 @@ def create_posted_entry(organization, entry_date, memo, lines, source_type="", s
         return JournalEntry.objects.get(
             organization=organization, source_type=source_type, source_id=source_id, status=JournalEntry.Status.POSTED
         )
+
+    if period_is_locked(organization, entry_date):
+        raise ValidationError("This date falls in a locked period.")
 
     cleaned = []
     debit_total = ZERO
