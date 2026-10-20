@@ -5,6 +5,7 @@ from apps.reports.views import (
     BalanceSheetView,
     BudgetCompareView,
     ProfitAndLossView,
+    SearchView,
     TaxSummaryView,
     TrialBalanceView,
 )
@@ -16,4 +17,5 @@ urlpatterns = [
     path("reports/account-ledger/", AccountLedgerView.as_view(), name="account-ledger"),
     path("reports/trial-balance/", TrialBalanceView.as_view(), name="trial-balance"),
     path("reports/tax-summary/", TaxSummaryView.as_view(), name="tax-summary"),
+    path("search/", SearchView.as_view(), name="search"),
 ]

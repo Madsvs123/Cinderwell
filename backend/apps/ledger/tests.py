@@ -58,6 +58,10 @@ class BooksFlowTests(TestCase):
         self.assertEqual(tax_report.status_code, 200, tax_report.data)
         self.assertEqual(tax_report.data["collected"], "20.00")
         self.assertEqual(tax_report.data["net_payable"], "20.00")
+        found_customer = self.client.get("/api/search/?q=sample client")
+        self.assertEqual(found_customer.status_code, 200, found_customer.data)
+        self.assertEqual(found_customer.data["invoices"][0]["customer_name"], "Sample Client")
+        self.assertEqual(found_customer.data["journals"], [])
 
         expense = Account.objects.get(organization=self.user.organization, code="5100")
         bill = self.client.post(
@@ -73,6 +77,10 @@ class BooksFlowTests(TestCase):
             format="json",
         )
         self.assertEqual(bill.status_code, 201, bill.data)
+        found_vendor = self.client.get("/api/search/?q=host")
+        self.assertEqual(found_vendor.data["bills"][0]["vendor_name"], "Sample Host")
+        found_memo = self.client.get("/api/search/?q=Issue")
+        self.assertTrue(any(row["memo"].startswith("Issue") for row in found_memo.data["journals"]))
         pay_invoice = self.client.post(f"/api/invoices/{invoice.data['id']}/pay/", {"paid_on": "2026-03-10"}, format="json")
         pay_bill_response = self.client.post(f"/api/bills/{bill.data['id']}/pay/", {"paid_on": "2026-03-12"}, format="json")
         self.assertEqual(pay_invoice.status_code, 200, pay_invoice.data)

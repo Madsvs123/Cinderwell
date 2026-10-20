@@ -7,9 +7,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.budgets.models import BudgetLine
-from apps.ledger.models import Account
+from apps.invoicing.models import Invoice
+from apps.ledger.models import Account, JournalEntry
 from apps.ledger.services import account_ledger, account_totals, money, tax_summary, trial_balance
 from apps.ledger.views import organization_of
+from apps.payables.models import Bill
 
 
 def _parse_date(value, fallback):
@@ -82,6 +84,34 @@ class AccountLedgerView(APIView):
                         "balance": f"{row['balance']:.2f}",
                     }
                     for row in report["lines"]
+                ],
+            }
+        )
+
+
+class SearchView(APIView):
+    def get(self, request):
+        query = (request.query_params.get("q") or "").strip()
+        org = organization_of(request)
+        if not query:
+            return Response({"q": "", "journals": [], "invoices": [], "bills": []})
+        journals = JournalEntry.objects.filter(organization=org, memo__icontains=query).order_by("-entry_date", "-id")[:25]
+        invoices = Invoice.objects.filter(organization=org, customer_name__icontains=query).order_by("-issue_date", "-id")[:25]
+        bills = Bill.objects.filter(organization=org, vendor_name__icontains=query).order_by("-bill_date", "-id")[:25]
+        return Response(
+            {
+                "q": query,
+                "journals": [
+                    {"id": entry.id, "entry_date": entry.entry_date.isoformat(), "memo": entry.memo, "source_type": entry.source_type}
+                    for entry in journals
+                ],
+                "invoices": [
+                    {"id": invoice.id, "number": invoice.number, "customer_name": invoice.customer_name, "status": invoice.status}
+                    for invoice in invoices
+                ],
+                "bills": [
+                    {"id": bill.id, "number": bill.number, "vendor_name": bill.vendor_name, "status": bill.status}
+                    for bill in bills
                 ],
             }
         )
